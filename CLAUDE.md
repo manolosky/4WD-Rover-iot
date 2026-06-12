@@ -1,56 +1,56 @@
-# 4WD Rover IoT — Contexto del Proyecto
+# 4WD Rover IoT — Project Context
 
-> Rover de exploración 4WD con ESP32, suspensión de doble articulación y arquitectura modular.
+> 4WD exploration rover with ESP32, double-articulation suspension and modular architecture.
 > Repo: https://github.com/manolosky/4WD-Rover-iot.git
 
-## Arquitectura
+## Architecture
 
-- **rover-base/** — Firmware de la ESP32 principal (control de motores, WiFi AP, web UI, IMU, LEDs, buzzer, batería)
-- **camera-fpv/** — Firmware de la Freenove ESP32-S3-WROOM CAM (stream de video, cliente del AP)
-- **docs/** — Documentación de diseño (ver `rover-4wd-proyecto-contexto.md`)
+- **rover-base/** — Main ESP32 firmware (motor control, WiFi AP, web UI, IMU, LEDs, buzzer, battery)
+- **camera-fpv/** — Freenove ESP32-S3-WROOM CAM firmware (video stream, AP client)
+- **docs/** — Design documentation (see `rover-4wd-project-context.md`)
 
-## Fases
+## Phases
 
-1. **Fase 1 (actual):** rover base + control WiFi desde móvil + cámara FPV
-2. **Fase 2:** módulo de telemetría con ESP32 propia (UART vía conector GX16-10)
-3. **Fase 3:** mando RC físico con NRF24L01 (receptor ya cableado en fase 1)
+1. **Phase 1 (current):** base rover + WiFi control from phone + FPV camera
+2. **Phase 2:** telemetry module with its own ESP32 (UART via GX16-10 connector)
+3. **Phase 3:** physical RC transmitter with NRF24L01 (receiver already wired in phase 1)
 
-## Hardware clave
+## Key hardware
 
-- ESP32 DevKit (principal) + Freenove ESP32-S3-WROOM CAM (FPV, independiente)
-- 4× motores JGA25-370 12V 100RPM con encoder (11 PPR, ratio 1:43)
-- 2× BTS7960: #1 = M1+M3 (izq paralelo), #2 = M2+M4 (der paralelo). Skid steer
-- Ruedas 92mm hex 12mm. Velocidad máx ~0.48 m/s
-- Batería LiPo 3S 2200mAh 30C XT60. LM2596 → 5V
-- IMU MPU6050 (I2C, centro del chasis), buzzer pasivo, 8× WS2812B
-- NRF24L01+PA+LNA cableado (inactivo hasta fase 3)
+- ESP32 DevKit (main) + Freenove ESP32-S3-WROOM CAM (FPV, independent)
+- 4× JGA25-370 12V 100RPM motors with encoder (11 PPR, 1:43 ratio)
+- 2× BTS7960: #1 = M1+M3 (left, paralleled), #2 = M2+M4 (right, paralleled). Skid steer
+- 92mm wheels, 12mm hex. Max speed ~0.48 m/s
+- LiPo 3S 2200mAh 30C battery, XT60 connector. LM2596 → 5V
+- MPU6050 IMU (I2C, chassis center), passive buzzer, 8× WS2812B
+- NRF24L01+PA+LNA wired (inactive until phase 3)
 
-## Mapa de pines ESP32 principal
+## Main ESP32 pin map
 
-| Función | GPIO |
+| Function | GPIO |
 |---|---|
-| BTS#1 RPWM / LPWM / EN (izq) | 25 / 33 / 32 |
-| BTS#2 RPWM / LPWM / EN (der) | 14 / 12 / 13 |
+| BTS#1 RPWM / LPWM / EN (left) | 25 / 33 / 32 |
+| BTS#2 RPWM / LPWM / EN (right) | 14 / 12 / 13 |
 | Encoder M1 / M2 / M3 / M4 | 4 / 0 / 36 / 39 |
 | I2C SDA / SCL | 21 / 22 |
-| LEDs WS2812B (8 px) | 2 |
-| Buzzer pasivo (PWM) | 15 |
-| Batería ADC (div 100K/27K) | 35 |
-| UART1 TX / RX (GX16 módulos) | 17 / 16 |
+| WS2812B LEDs (8 px) | 2 |
+| Passive buzzer (PWM) | 15 |
+| Battery ADC (100K/27K divider) | 35 |
+| UART1 TX / RX (GX16 modules) | 17 / 16 |
 | NRF24 MOSI/MISO/SCK/CSN/CE | 23/19/18/5/27 |
 
-## Reglas críticas
+## Critical rules
 
-- **ADC2 no funciona con WiFi activo** → solo ADC1 (GPIO 32-39)
-- **GPIO 0** tiene pull-up de boot → válido como entrada de encoder tras arranque, nunca forzar LOW al encender
-- Encoders: solo canal A (amarillo). Dirección se conoce por el comando al BTS7960
-- 374 pulsos ≈ 1 vuelta de rueda (11 PPR × 34) → ~0.77mm/pulso con rueda 92mm
-- Núcleo 0: WiFi + web. Núcleo 1: motores, encoders, IMU, LEDs (xTaskCreatePinnedToCore)
-- WiFi AP: SSID `Rover-4WD`. La cámara se conecta como cliente con IP fija 192.168.4.2
+- **ADC2 does not work while WiFi is active** → ADC1 only (GPIO 32-39)
+- **GPIO 0** has a boot pull-up → valid as encoder input after boot, never force it LOW at power-up
+- Encoders: channel A only (yellow wire). Direction is known from the command sent to the BTS7960
+- 374 pulses ≈ 1 wheel revolution (11 PPR × 34) → ~0.77mm/pulse with a 92mm wheel
+- Core 0: WiFi + web. Core 1: motors, encoders, IMU, LEDs (xTaskCreatePinnedToCore)
+- WiFi AP: SSID `Rover-4WD`. The camera connects as a client with static IP 192.168.4.2
 
-## Convenciones de código
+## Code conventions
 
 - PlatformIO + Arduino framework
-- Módulos header-only en `include/` (config.h centraliza pines y constantes)
-- Español en comentarios, inglés en identificadores
-- No bloquear el loop: usar millis(), nunca delay() en lógica de control
+- Header-only modules in `include/` (config.h centralizes pins and constants)
+- Spanish in comments, English in identifiers
+- Never block the loop: use millis(), never delay() in control logic

@@ -1,86 +1,86 @@
 # 🤖 4WD Rover IoT
 
-Rover de exploración 4WD basado en ESP32 con suspensión de doble articulación, control FPV vía WiFi y arquitectura modular.
+4WD exploration rover based on ESP32 with double-articulation suspension, FPV control over WiFi and a modular architecture.
 
-## Estructura
+## Structure
 
 ```
 4WD-Rover-iot/
-├── CLAUDE.md            # Contexto del proyecto para Claude Code
-├── rover-base/          # Firmware ESP32 principal (PlatformIO)
-│   ├── include/         # Módulos header-only
-│   │   ├── config.h     # ⭐ Pines y constantes (fuente única de verdad)
-│   │   ├── motors.h     # Skid-steer con 2× BTS7960
-│   │   ├── encoders.h   # 4 encoders por interrupción + RPM
-│   │   ├── imu.h        # MPU6050: vuelco/alzado/inclinación
-│   │   ├── leds.h       # 8× WS2812B: luces, intermitentes, alertas
-│   │   ├── buzzer.h     # Tonos por situación
-│   │   ├── battery.h    # Monitoreo LiPo 3S
-│   │   └── webui.h      # Interfaz web embebida
-│   └── src/main.cpp     # Dual-core: web (núcleo 0) + control (núcleo 1)
-├── camera-fpv/          # Firmware Freenove ESP32-S3-WROOM CAM
-│   └── src/main.cpp     # Stream MJPEG en 192.168.4.2:81/stream
-└── docs/                # Documentación de diseño
+├── CLAUDE.md            # Project context for Claude Code
+├── rover-base/          # Main ESP32 firmware (PlatformIO)
+│   ├── include/         # Header-only modules
+│   │   ├── config.h     # ⭐ Pins and constants (single source of truth)
+│   │   ├── motors.h     # Skid-steer with 2× BTS7960
+│   │   ├── encoders.h   # 4 interrupt-driven encoders + RPM
+│   │   ├── imu.h        # MPU6050: rollover/lift/tilt detection
+│   │   ├── leds.h       # 8× WS2812B: lights, turn signals, alerts
+│   │   ├── buzzer.h     # Situation tones
+│   │   ├── battery.h    # LiPo 3S monitoring
+│   │   └── webui.h      # Embedded web interface
+│   └── src/main.cpp     # Dual-core: web (core 0) + control (core 1)
+├── camera-fpv/          # Freenove ESP32-S3-WROOM CAM firmware
+│   └── src/main.cpp     # MJPEG stream at 192.168.4.2:81/stream
+└── docs/                # Design documentation
 ```
 
-## Fase 1 — Qué hace este firmware
+## Phase 1 — What this firmware does
 
-- **Control desde el móvil:** la ESP32 crea el WiFi `Rover-4WD`. Conéctate y abre `http://192.168.4.1` — joystick virtual + video FPV + telemetría en una sola página
-- **Video FPV:** la ESP32-S3 CAM se conecta sola al rover y transmite VGA ~20fps
-- **Seguridad:** failsafe (sin señal 600ms → stop), corte de motores al detectar vuelco o alzado (IMU), aviso de batería baja
-- **Luces automotrices:** delanteras (toggle), traseras según movimiento, intermitentes al girar, reversa en blanco, alerta roja parpadeante si vuelca
-- **Buzzer:** tono grave = volcado, agudo intermitente = alzado, melodía = botón "encontrar", beep = batería baja
-- **Telemetría:** voltaje/% batería, velocidad m/s, RPM promedio, distancia recorrida, pitch/roll
+- **Control from your phone:** the ESP32 creates the `Rover-4WD` WiFi network. Connect and open `http://192.168.4.1` — virtual joystick + FPV video + telemetry on a single page
+- **FPV video:** the ESP32-S3 CAM connects to the rover by itself and streams VGA at ~20fps
+- **Safety:** failsafe (no signal for 600ms → stop), motor cutoff on rollover or lift detection (IMU), low battery warning
+- **Automotive lighting:** headlights (toggle), tail lights based on movement, turn signals when steering, white reverse lights, blinking red alert on rollover
+- **Buzzer:** low tone = rollover, intermittent high tone = lifted, melody = "find me" button, beep = low battery
+- **Telemetry:** battery voltage/%, speed in m/s, average RPM, distance traveled, pitch/roll
 
 ## Setup
 
-### Requisitos
-- [PlatformIO](https://platformio.org/) (CLI o extensión de VS Code)
+### Requirements
+- [PlatformIO](https://platformio.org/) (CLI or VS Code extension)
 
-### Configurar credenciales (primera vez)
+### Configure credentials (first time)
 ```bash
-# En rover-base/ Y en camera-fpv/, copia la plantilla:
+# In rover-base/ AND in camera-fpv/, copy the template:
 cp secrets.ini.example secrets.ini
-# Edita secrets.ini con tu SSID/password (mismo valor en ambos)
-# secrets.ini está en .gitignore: nunca se sube al repo
+# Edit secrets.ini with your SSID/password (same values in both)
+# secrets.ini is in .gitignore: it is never pushed to the repo
 ```
 
-### Flashear el rover
+### Flash the rover
 ```bash
 cd rover-base
-pio run -t upload          # ESP32 conectada por USB
-pio device monitor         # ver logs
+pio run -t upload          # ESP32 connected over USB
+pio device monitor         # watch logs
 ```
 
-### Flashear la cámara
+### Flash the camera
 ```bash
 cd camera-fpv
-pio run -t upload          # Freenove ESP32-S3 por USB nativo
+pio run -t upload          # Freenove ESP32-S3 over native USB
 ```
 
-> El SSID/password se define una sola vez por proyecto en `secrets.ini`. Usa los mismos valores en rover-base y camera-fpv.
+> The SSID/password is defined once per project in `secrets.ini`. Use the same values in rover-base and camera-fpv.
 
-### Probar
-1. Enciende el rover (y la cámara)
-2. En el móvil: WiFi → `Rover-4WD` (el password de tu secrets.ini)
-3. Navegador → `http://192.168.4.1`
+### Test it
+1. Power on the rover (and the camera)
+2. On your phone: WiFi → `Rover-4WD` (the password from your secrets.ini)
+3. Browser → `http://192.168.4.1`
 
-## Endpoints HTTP del rover
+## Rover HTTP endpoints
 
-| Ruta | Función |
+| Route | Function |
 |---|---|
-| `/` | Interfaz web completa |
-| `/cmd?x=&y=` | Comando de joystick (-100..100) |
-| `/lights` | Toggle de luces delanteras |
-| `/find` | Buzzer + flash "encontrar" |
-| `/status` | JSON de telemetría |
+| `/` | Full web interface |
+| `/cmd?x=&y=` | Joystick command (-100..100) |
+| `/lights` | Headlights toggle |
+| `/find` | "Find me" buzzer + flash |
+| `/status` | Telemetry JSON |
 
 ## Roadmap
 
-- [x] **Fase 1:** rover base + WiFi + FPV *(este código)*
-- [ ] **Fase 2:** módulo de telemetría (ESP32 propia, UART vía GX16-10)
-- [ ] **Fase 3:** mando RC físico (NRF24L01, ~1km)
+- [x] **Phase 1:** base rover + WiFi + FPV *(this code)*
+- [ ] **Phase 2:** telemetry module (dedicated ESP32, UART over GX16-10)
+- [ ] **Phase 3:** physical RC transmitter (NRF24L01, ~1km)
 
 ## Hardware
 
-Ver `CLAUDE.md` para el mapa de pines completo y `docs/` para el diseño mecánico.
+See `CLAUDE.md` for the full pin map and `docs/` for the mechanical design.
