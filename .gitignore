@@ -1,0 +1,7 @@
+.pio/
+.vscode/
+*.bin
+*.elf
+.DS_Store
+secrets.ini
+.claude/settings.local.json
