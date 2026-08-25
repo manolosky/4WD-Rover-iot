@@ -29,15 +29,16 @@
 
 | Function | GPIO |
 |---|---|
-| BTS#1 RPWM / LPWM / EN (left) | 25 / 33 / 32 |
-| BTS#2 RPWM / LPWM / EN (right) | 14 / 12 / 13 |
+| BTS left side ("Driver B") RPWM / LPWM | 32 / 33 |
+| BTS right side ("Driver A") RPWM / LPWM | 26 / 25 |
+| BTS EN (all 4 EN pins of both drivers, bridged) | 27 |
 | Encoder M1 / M2 / M3 / M4 | 4 / 0 / 36 / 39 |
 | I2C SDA / SCL | 21 / 22 |
 | WS2812B LEDs (8 px) | 2 |
 | Passive buzzer (PWM) | 15 |
 | Battery ADC (100K/27K divider) | 35 |
 | UART1 TX / RX (GX16 modules) | 17 / 16 |
-| NRF24 MOSI/MISO/SCK/CSN/CE | 23/19/18/5/27 |
+| NRF24 MOSI/MISO/SCK/CSN | 23/19/18/5 (CE pending: GPIO27 now used by motor EN) |
 
 ## Critical rules
 
@@ -52,5 +53,5 @@
 
 - PlatformIO + Arduino framework
 - Header-only modules in `include/` (config.h centralizes pins and constants)
-- Spanish in comments, English in identifiers
+- English in code comments and identifiers (web UI user-facing text stays in Spanish)
 - Never block the loop: use millis(), never delay() in control logic
