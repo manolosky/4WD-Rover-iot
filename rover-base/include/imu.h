@@ -4,8 +4,8 @@
 #include "config.h"
 
 // ============================================================
-// imu.h — MPU6050: pitch/roll + detección de vuelco y alzado
-// Lectura directa por registros (sin librería pesada).
+// imu.h — MPU6050: pitch/roll + rollover and lift detection
+// Direct register access (no heavy library).
 // ============================================================
 
 namespace IMU {
@@ -27,12 +27,12 @@ inline void begin() {
   Wire.beginTransmission(IMU_ADDR);
   present = (Wire.endTransmission() == 0);
   if (!present) return;
-  writeReg(0x6B, 0x00);  // PWR_MGMT_1: despertar
+  writeReg(0x6B, 0x00);  // PWR_MGMT_1: wake up
   writeReg(0x1C, 0x00);  // ACCEL_CONFIG: ±2g
-  writeReg(0x1A, 0x04);  // DLPF ~21Hz: filtra vibración de motores
+  writeReg(0x1A, 0x04);  // DLPF ~21Hz: filters motor vibration
 }
 
-// Llamar cada IMU_LOOP_MS
+// Call every IMU_LOOP_MS
 inline void update() {
   if (!present) return;
   Wire.beginTransmission(IMU_ADDR);
@@ -50,20 +50,20 @@ inline void update() {
   float az = rawZ / 16384.0f;
   accZ = az;
 
-  // Ángulos desde el vector gravedad (suficiente para vuelco; el DLPF filtra vibración)
+  // Angles from the gravity vector (enough for rollover; DLPF filters vibration)
   pitch = atan2f(-ax, sqrtf(ay * ay + az * az)) * 180.0f / PI;
   roll  = atan2f(ay, az) * 180.0f / PI;
 
   float aMag = sqrtf(ax * ax + ay * ay + az * az);
 
-  if (aMag < LIFT_ACCEL_THRESH)                      state = LIFTED;       // caída libre / alzado brusco
+  if (aMag < LIFT_ACCEL_THRESH)                      state = LIFTED;       // free fall / sudden lift
   else if (fabsf(roll) > TILT_ROLLOVER_DEG ||
            fabsf(pitch) > TILT_ROLLOVER_DEG)         state = ROLLED_OVER;
-  else if (fabsf(roll) > TILT_WARN_DEG)              state = TILT_WARN;    // pendiente lateral peligrosa
+  else if (fabsf(roll) > TILT_WARN_DEG)              state = TILT_WARN;    // dangerous side slope
   else                                               state = OK_LEVEL;
 }
 
-// Pendiente vs pared: si pitch sube de forma sostenida, es pendiente
+// Slope vs wall: sustained rising pitch means a slope
 inline bool isClimbing() { return pitch > 8.0f && pitch < TILT_WARN_DEG; }
 
 } // namespace IMU

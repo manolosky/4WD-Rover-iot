@@ -1,7 +1,7 @@
 // ============================================================
-// main.cpp — Rover 4WD · Fase 1
-// Núcleo 0: WiFi AP + servidor web (joystick, telemetría)
-// Núcleo 1: motores, encoders, IMU, LEDs, buzzer, batería
+// main.cpp — Rover 4WD · Phase 1
+// Core 0: WiFi AP + web server (joysticks, telemetry)
+// Core 1: motors, encoders, IMU, LEDs, buzzer, battery
 // ============================================================
 #include <Arduino.h>
 #include <WiFi.h>
@@ -17,17 +17,18 @@
 
 WebServer server(80);
 
-// Comando actual del joystick (compartido entre núcleos)
+// Current joystick command (shared between cores)
 volatile int8_t cmdX = 0, cmdY = 0;
 volatile uint32_t lastCmdMs = 0;
 volatile bool findRequest = false;
 
 // ------------------------------------------------------------
-// HTTP handlers (núcleo 0)
+// HTTP handlers (core 0)
 // ------------------------------------------------------------
 void handleRoot() {
   String html = FPSTR(WEB_UI);
   html.replace("%CAM_URL%", CAMERA_STREAM_URL);
+  html.replace("%CAM_ON%", CAMERA_ENABLED ? "1" : "0");
   server.send(200, "text/html", html);
 }
 
@@ -46,6 +47,15 @@ void handleLights() {
 void handleFind() {
   findRequest = true;
   server.send(200, "text/plain", "ok");
+}
+
+// Gear selector: /gear?v=0 (low) | 1 (normal) | 2 (high)
+void handleGear() {
+  int g = server.arg("v").toInt();
+  Motors::maxSpeedPct = (0 == g) ? GEAR_LOW_PCT
+                      : (2 == g) ? GEAR_HIGH_PCT
+                      : GEAR_NORMAL_PCT;
+  server.send(200, "text/plain", String(Motors::maxSpeedPct));
 }
 
 void handleStatus() {
@@ -69,7 +79,7 @@ void handleStatus() {
 }
 
 // ------------------------------------------------------------
-// Tarea de control (núcleo 1) — tiempo real, nunca se bloquea
+// Control task (core 1) — real time, never blocks
 // ------------------------------------------------------------
 void controlTask(void* pv) {
   uint32_t lastImu = 0, lastBat = 0, lastLed = 0;
@@ -77,22 +87,22 @@ void controlTask(void* pv) {
   for (;;) {
     uint32_t now = millis();
 
-    // --- Failsafe: sin comando reciente -> detener ---
+    // --- Failsafe: no recent command -> stop ---
     bool timedOut = (now - lastCmdMs) > CMD_TIMEOUT_MS;
 
-    // --- Seguridad IMU: volcado o alzado -> motores OFF ---
+    // --- IMU safety: rolled over or lifted -> motors OFF ---
     bool unsafe = (IMU::state == IMU::ROLLED_OVER || IMU::state == IMU::LIFTED);
 
     if (unsafe || timedOut) Motors::stop();
     else                    Motors::driveJoystick(cmdX, cmdY);
 
-    // --- Encoders (cada ENCODER_CALC_MS internamente) ---
+    // --- Encoders (every ENCODER_CALC_MS internally) ---
     Encoders::update();
 
     // --- IMU ---
     if (now - lastImu >= IMU_LOOP_MS) { lastImu = now; IMU::update(); }
 
-    // --- Batería ---
+    // --- Battery ---
     if (now - lastBat >= TELEMETRY_MS) {
       lastBat = now;
       Battery::update();
@@ -102,10 +112,10 @@ void controlTask(void* pv) {
     // --- LEDs ---
     if (now - lastLed >= 50) { lastLed = now; Leds::update(); }
 
-    // --- Buzzer (alarmas continuas) ---
+    // --- Buzzer (continuous alarms) ---
     Buzzer::update();
 
-    // --- Petición de "encontrar" desde la web ---
+    // --- "Find me" request from the web UI ---
     if (findRequest) {
       findRequest = false;
       Buzzer::playFind();
@@ -119,7 +129,7 @@ void controlTask(void* pv) {
 // ------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n[Rover] Iniciando Fase 1...");
+  Serial.println("\n[Rover] Starting Phase 1...");
 
   Motors::begin();
   Encoders::begin();
@@ -128,7 +138,7 @@ void setup() {
   Buzzer::begin();
   Battery::begin();
 
-  Serial.printf("[Rover] IMU %s\n", IMU::present ? "OK" : "NO DETECTADA");
+  Serial.printf("[Rover] IMU %s\n", IMU::present ? "OK" : "NOT DETECTED");
 
   // WiFi AP
   WiFi.mode(WIFI_AP);
@@ -136,23 +146,25 @@ void setup() {
   Serial.printf("[Rover] AP '%s' -> http://%s\n",
                 WIFI_AP_SSID, WiFi.softAPIP().toString().c_str());
 
-  // Rutas web
+  // Web routes
   server.on("/",       handleRoot);
   server.on("/cmd",    handleCmd);
   server.on("/lights", handleLights);
   server.on("/find",   handleFind);
+  server.on("/gear",   handleGear);
   server.on("/status", handleStatus);
   server.begin();
 
-  // Tarea de control en núcleo 1 (APP_CPU)
+  // Control task on core 1 (APP_CPU)
   xTaskCreatePinnedToCore(controlTask, "control", 8192, nullptr, 2, nullptr, 1);
 
   Buzzer::playBoot();
-  Serial.println("[Rover] Listo.");
+  Serial.println("[Rover] Ready.");
 }
 
-// loop() corre en núcleo 1 por defecto en Arduino-ESP32, pero el servidor
-// es ligero; lo atendemos aquí y la tarea de control va aparte con prioridad.
+// loop() runs on core 1 by default in Arduino-ESP32, but the server is
+// lightweight; we serve it here and the control task runs separately
+// with higher priority.
 void loop() {
   server.handleClient();
   delay(2);

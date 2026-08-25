@@ -2,8 +2,8 @@
 #include <Arduino.h>
 
 // ============================================================
-// webui.h — Interfaz web embebida (joystick + FPV + telemetría)
-// Servida desde PROGMEM. Una sola página, sin dependencias externas.
+// webui.h — Embedded web UI (joysticks + FPV + telemetry)
+// Served from PROGMEM. Single page, no external dependencies.
 // ============================================================
 
 const char WEB_UI[] PROGMEM = R"HTML(
@@ -34,11 +34,20 @@ padding:5px 12px;font-size:12px;font-weight:600;display:flex;align-items:center;
 /* ---- Controls ---- */
 #controls{display:flex;align-items:center;justify-content:space-between;
 padding:12px 18px calc(14px + env(safe-area-inset-bottom));gap:10px;background:var(--sf);border-top:1px solid var(--bd)}
-#joyZone{width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,#1d2230,#161922);
-border:2px solid var(--bd);position:relative;flex-shrink:0}
-#joyKnob{width:60px;height:60px;border-radius:50%;background:linear-gradient(145deg,var(--or),#d97f28);
+/* Two single-axis joysticks: vertical (throttle) and horizontal (steering) */
+.joy{background:radial-gradient(circle,#1d2230,#161922);border:2px solid var(--bd);
+position:relative;flex-shrink:0}
+.joy.v{width:84px;height:170px;border-radius:42px}
+.joy.h{width:170px;height:84px;border-radius:42px}
+.knob{width:60px;height:60px;border-radius:50%;background:linear-gradient(145deg,var(--or),#d97f28);
 position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);box-shadow:0 3px 12px rgba(245,158,66,.4)}
-#btns{display:flex;flex-direction:column;gap:10px}
+#mid{display:flex;flex-direction:column;align-items:center;gap:10px}
+#btns{display:flex;flex-direction:row;gap:10px}
+/* Gear selector */
+#gears{display:flex;gap:6px}
+.gear{width:46px;height:42px;border-radius:12px;border:1px solid var(--bd);background:#1d2230;
+color:var(--mt);font-size:15px;font-weight:700;transition:all .12s}
+.gear.on{background:var(--gn);color:#0d0f14;border-color:var(--gn)}
 .btn{width:64px;height:64px;border-radius:16px;border:1px solid var(--bd);background:#1d2230;
 color:var(--tx);font-size:24px;display:flex;align-items:center;justify-content:center;transition:all .12s}
 .btn:active{transform:scale(.92);background:#252b3d}
@@ -58,43 +67,51 @@ color:var(--tx);font-size:24px;display:flex;align-items:center;justify-content:c
   </div>
 </div>
 <div id="controls">
-  <div id="stats">
-    <div>RPM <b id="rpmTxt">0</b></div>
-    <div>Dist <b id="distTxt">0 m</b></div>
-    <div>Pitch <b id="pitchTxt">0°</b></div>
+  <div class="joy v" id="joyY"><div class="knob" id="knobY"></div></div>
+  <div id="mid">
+    <div id="stats">
+      <div>RPM <b id="rpmTxt">0</b></div>
+      <div>Dist <b id="distTxt">0 m</b></div>
+      <div>Pitch <b id="pitchTxt">0°</b></div>
+    </div>
+    <div id="gears">
+      <button class="gear" data-g="0" title="Lenta">1</button>
+      <button class="gear on" data-g="1" title="Normal">2</button>
+      <button class="gear" data-g="2" title="Rápida">3</button>
+    </div>
+    <div id="btns">
+      <button class="btn" id="lightBtn" title="Luces">💡</button>
+      <button class="btn" id="findBtn" title="Encontrar">📢</button>
+    </div>
   </div>
-  <div id="joyZone"><div id="joyKnob"></div></div>
-  <div id="btns">
-    <button class="btn" id="lightBtn" title="Luces">💡</button>
-    <button class="btn" id="findBtn" title="Encontrar">📢</button>
-  </div>
+  <div class="joy h" id="joyX"><div class="knob" id="knobX"></div></div>
 </div>
 <script>
-const zone=document.getElementById('joyZone'),knob=document.getElementById('joyKnob');
-let jx=0,jy=0,active=false;
-const R=zone.clientWidth/2-30;
-
-function setKnob(dx,dy){knob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`}
-
-function handle(e){
-  const t=e.touches?e.touches[0]:e;
-  const r=zone.getBoundingClientRect();
-  let dx=t.clientX-(r.left+r.width/2), dy=t.clientY-(r.top+r.height/2);
-  const d=Math.hypot(dx,dy);
-  if(d>R){dx=dx/d*R;dy=dy/d*R}
-  setKnob(dx,dy);
-  jx=Math.round(dx/R*100); jy=Math.round(-dy/R*100);
+// Two independent single-axis joysticks (multi-touch capable:
+// each zone tracks its own finger via targetTouches)
+let jx=0,jy=0;
+function axis(zone,knob,horiz,cb){
+  const R=(horiz?zone.clientWidth:zone.clientHeight)/2-34;
+  function upd(t){
+    const r=zone.getBoundingClientRect();
+    let d=horiz? t.clientX-(r.left+r.width/2) : t.clientY-(r.top+r.height/2);
+    d=Math.max(-R,Math.min(R,d));
+    knob.style.transform=horiz?`translate(calc(-50% + ${d}px),-50%)`:`translate(-50%,calc(-50% + ${d}px))`;
+    cb(Math.round((horiz?d:-d)/R*100));
+  }
+  function reset(){knob.style.transform='translate(-50%,-50%)';cb(0);send()}
+  zone.addEventListener('touchstart',e=>{upd(e.targetTouches[0]);e.preventDefault()},{passive:false});
+  zone.addEventListener('touchmove',e=>{upd(e.targetTouches[0]);e.preventDefault()},{passive:false});
+  zone.addEventListener('touchend',e=>{if(0===e.targetTouches.length)reset()});
+  let md=false;
+  zone.addEventListener('mousedown',e=>{md=true;upd(e)});
+  window.addEventListener('mousemove',e=>{if(md)upd(e)});
+  window.addEventListener('mouseup',()=>{if(md){md=false;reset()}});
 }
-function release(){active=false;jx=0;jy=0;setKnob(0,0);send()}
+axis(document.getElementById('joyY'),document.getElementById('knobY'),false,v=>{jy=v});
+axis(document.getElementById('joyX'),document.getElementById('knobX'),true,v=>{jx=v});
 
-zone.addEventListener('touchstart',e=>{active=true;handle(e);e.preventDefault()},{passive:false});
-zone.addEventListener('touchmove',e=>{if(active)handle(e);e.preventDefault()},{passive:false});
-zone.addEventListener('touchend',release);
-zone.addEventListener('mousedown',e=>{active=true;handle(e)});
-window.addEventListener('mousemove',e=>{if(active)handle(e)});
-window.addEventListener('mouseup',()=>{if(active)release()});
-
-// Envío de comandos a 15Hz (solo si hay cambio o cada 400ms como keepalive)
+// Send commands at 15Hz (only on change, or every 400ms as keepalive)
 let lastSent=0,lastX=0,lastY=0;
 function send(){
   fetch(`/cmd?x=${jx}&y=${jy}`).catch(()=>{});
@@ -104,12 +121,18 @@ setInterval(()=>{
   if(jx!==lastX||jy!==lastY||Date.now()-lastSent>400) send();
 },66);
 
-// Botones
+// Gears
+document.querySelectorAll('.gear').forEach(b=>b.onclick=()=>
+  fetch('/gear?v='+b.dataset.g).then(()=>{
+    document.querySelectorAll('.gear').forEach(x=>x.classList.toggle('on',x===b));
+  }).catch(()=>{}));
+
+// Buttons
 const lightBtn=document.getElementById('lightBtn');
 lightBtn.onclick=()=>fetch('/lights').then(r=>r.text()).then(s=>lightBtn.classList.toggle('on',s==='1'));
 document.getElementById('findBtn').onclick=()=>fetch('/find');
 
-// Telemetría
+// Telemetry
 const batPill=document.getElementById('batPill');
 setInterval(()=>fetch('/status').then(r=>r.json()).then(s=>{
   document.getElementById('batTxt').textContent=s.v.toFixed(1)+'V '+s.pct+'%';
@@ -126,7 +149,9 @@ setInterval(()=>fetch('/status').then(r=>r.json()).then(s=>{
   else a.style.display='none';
 }).catch(()=>{}),500);
 
-// Video FPV: intenta conectar a la cámara, reintenta si falla
+// FPV video: try to connect to the camera, retry on failure.
+// With CAM_ON=0 the camera stays on standby and no connection is opened.
+const CAM_ON=%CAM_ON%;
 const vid=document.getElementById('video'),noCam=document.getElementById('noCam');
 function tryCam(){
   const img=new Image();
@@ -134,7 +159,8 @@ function tryCam(){
   img.onerror=()=>setTimeout(tryCam,4000);
   img.src='%CAM_URL%';
 }
-tryCam();
+if(CAM_ON)tryCam();
+else noCam.innerHTML='📷 Cámara FPV en standby';
 </script>
 </body>
 </html>
