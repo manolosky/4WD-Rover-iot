@@ -1,14 +1,14 @@
 // ============================================================
-// main.cpp — Cámara FPV · Freenove ESP32-S3-WROOM CAM (OV2640)
-// Se conecta al AP del rover con IP fija 192.168.4.2 y sirve
-// MJPEG en http://192.168.4.2:81/stream
+// main.cpp — FPV Camera · Freenove ESP32-S3-WROOM CAM (OV2640)
+// Connects to the rover AP with static IP 192.168.4.2 and serves
+// MJPEG at http://192.168.4.2:81/stream
 // ============================================================
 #include <Arduino.h>
 #include <WiFi.h>
 #include "esp_camera.h"
 #include "esp_http_server.h"
 
-// ---- Red del rover: credenciales desde secrets.ini ----
+// ---- Rover network: credentials from secrets.ini ----
 #ifndef SECRET_AP_SSID
   #define SECRET_AP_SSID "Rover-4WD"
 #endif
@@ -21,7 +21,7 @@ IPAddress localIP(192, 168, 4, 2);
 IPAddress gateway(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
 
-// ---- Pines cámara: Freenove ESP32-S3-WROOM CAM ----
+// ---- Camera pins: Freenove ESP32-S3-WROOM CAM ----
 #define PWDN_GPIO  -1
 #define RESET_GPIO -1
 #define XCLK_GPIO  15
@@ -42,7 +42,7 @@ IPAddress subnet(255, 255, 255, 0);
 httpd_handle_t streamServer = nullptr;
 
 // ------------------------------------------------------------
-// Handler MJPEG: multipart/x-mixed-replace
+// MJPEG handler: multipart/x-mixed-replace
 // ------------------------------------------------------------
 static esp_err_t streamHandler(httpd_req_t* req) {
   static const char* BOUNDARY = "123456789000000000000987654321";
@@ -63,7 +63,7 @@ static esp_err_t streamHandler(httpd_req_t* req) {
     if (res == ESP_OK) res = httpd_resp_send_chunk(req, (const char*)fb->buf, fb->len);
     esp_camera_fb_return(fb);
 
-    if (res != ESP_OK) break;   // cliente desconectado
+    if (res != ESP_OK) break;   // client disconnected
   }
   return ESP_OK;
 }
@@ -84,7 +84,7 @@ void startStreamServer() {
 // ------------------------------------------------------------
 void setup() {
   Serial.begin(115200);
-  Serial.println("\n[CAM] Iniciando...");
+  Serial.println("\n[CAM] Starting...");
 
   camera_config_t cfg = {};
   cfg.ledc_channel = LEDC_CHANNEL_0;
@@ -103,18 +103,18 @@ void setup() {
   cfg.pin_reset = RESET_GPIO;
   cfg.xclk_freq_hz = 20000000;
   cfg.pixel_format = PIXFORMAT_JPEG;
-  cfg.frame_size   = FRAMESIZE_VGA;     // 640x480: balance FPV
-  cfg.jpeg_quality = 12;                // 0-63 (menor = mejor calidad)
-  cfg.fb_count     = 2;                 // doble buffer con PSRAM
+  cfg.frame_size   = FRAMESIZE_VGA;     // 640x480: FPV balance
+  cfg.jpeg_quality = 12;                // 0-63 (lower = better quality)
+  cfg.fb_count     = 2;                 // double buffer with PSRAM
   cfg.fb_location  = CAMERA_FB_IN_PSRAM;
   cfg.grab_mode    = CAMERA_GRAB_LATEST;
 
   if (esp_camera_init(&cfg) != ESP_OK) {
-    Serial.println("[CAM] ERROR: fallo al iniciar cámara");
+    Serial.println("[CAM] ERROR: camera init failed");
     while (true) delay(1000);
   }
 
-  // Ajustes del sensor para exteriores
+  // Sensor tuning for outdoors
   sensor_t* s = esp_camera_sensor_get();
   s->set_brightness(s, 0);
   s->set_saturation(s, 1);
@@ -122,22 +122,22 @@ void setup() {
   s->set_exposure_ctrl(s, 1);
   s->set_gain_ctrl(s, 1);
 
-  // WiFi cliente del AP del rover con IP fija
+  // WiFi client of the rover AP with static IP
   WiFi.mode(WIFI_STA);
   WiFi.config(localIP, gateway, subnet);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  WiFi.setSleep(false);   // menor latencia de stream
+  WiFi.setSleep(false);   // lower stream latency
 
-  Serial.print("[CAM] Conectando al rover");
+  Serial.print("[CAM] Connecting to rover");
   while (WiFi.status() != WL_CONNECTED) { delay(400); Serial.print("."); }
-  Serial.printf("\n[CAM] Conectada: http://%s:81/stream\n",
+  Serial.printf("\n[CAM] Connected: http://%s:81/stream\n",
                 WiFi.localIP().toString().c_str());
 
   startStreamServer();
 }
 
 void loop() {
-  // Reconexión automática si el rover se reinicia
+  // Automatic reconnection if the rover reboots
   if (WiFi.status() != WL_CONNECTED) {
     WiFi.reconnect();
     delay(2000);
